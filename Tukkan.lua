@@ -32,13 +32,15 @@ function getLevelsFromFile()
     return l
 end
 
-function getPercentage(levelTable, playerLevel, playerExp)
-    print("Player level: "..playerLevel.."\n")
-    print("Total EXP for this level: "..levelTable[tonumber(playerLevel)]["exp_total"].."\n")
+function getPercentage(levelTable, player)
+    local charExp = player["charExperience"]
+    local charLevel = tonumber(player["charLevel"])
+    local totalExpToThisLevel = levelTable[charLevel]["exp_total"]
+    local totalExpToNextLevel = levelTable[charLevel]["exp_toNext"]
 
-    local percentage = math.floor((10000 * ((playerExp - levelTable[tonumber(playerLevel)]["exp_total"]) / levelTable[tonumber(playerLevel)]["exp_toNext"]))) / 100
-    local ps = tostring(percentage)
-    return percentage.."%"
+    local percentage = math.floor((10000 * ((charExp - totalExpToThisLevel) / totalExpToNextLevel))) / 100
+    local ps = tostring(percentage).."%"
+    return ps
 end
 
 function doesFileExist(name)
@@ -61,28 +63,59 @@ function printLadder(message, levelTable)
     local f = io.open("ladder/update_now.txt", "r")
     local n = f:read()
 
-    for i = 1, 100 do
-        print(i.." - "..levelTable[i]["level"]..": "..levelTable[i]["exp_total"])
-    end
-
-
     for i = 1, tonumber(n) do
-        local charName = f:read()
-        local charRank = f:read()
-        local charLevel = f:read()
-        local charExperience = f:read()
+        local player = {}
+        player["charName"] = f:read()
+        player["charRank"] = f:read()
+        player["charLevel"] = f:read()
+        player["charExperience"] = f:read()
+        local p = getPercentage(levelTable, player)
+        print("% = "..p)
+
         message.channel:send{
             embed = {
-                title = "Rank #"..charRank..": "..charName,
+                title = "Rank #"..player["charRank"]..": "..player["charName"],
                 fields = {
-                    { name = "Nível: ", value = charLevel, inline = true},
-                    { name = "EXP: ", value = charExperience, inline = true},
-                    { name = "Porcentagem: ", value = getPercentage(levelTable, charLevel, charExperience), inline = true}
+                    { name = "Nível: ", value = player["charLevel"], inline = true},
+                    { name = "EXP: ", value = player["charExperience"], inline = true},
+                    { name = "Porcentagem: ", value = p, inline = true}
                 },
                 color = discordia.Color.fromRGB(114, 100, 185).value
             }
         }
     end
+    f:close()
+end
+
+function printLadderWithLimit(message, levelTable, limit)
+    local f = io.open("ladder/update_now.txt", "r")
+    local n = f:read()
+
+    if limit > tonumber(n) then
+        message:reply("Tentando quebrar meu bot, é, parça? n deve ser menor ou igual a "..n.."!")
+        return
+    end
+
+    for i = 1, limit do
+        local player = {}
+        player["charName"] = f:read()
+        player["charRank"] = f:read()
+        player["charLevel"] = f:read()
+        player["charExperience"] = f:read()
+
+        message.channel:send{
+            embed = {
+                title = "Rank #"..player["charRank"]..": "..player["charName"],
+                fields = {
+                    { name = "Nível: ", value = player["charLevel"], inline = true},
+                    { name = "EXP: ", value = player["charExperience"], inline = true},
+                    { name = "Porcentagem: ", value = getPercentage(levelTable, player), inline = true}
+                },
+                color = discordia.Color.fromRGB(114, 100, 185).value
+            }
+        }
+    end
+    f:close()
 end
 
 function getLadder(message)
@@ -92,7 +125,6 @@ function getLadder(message)
             local link = "https://api.pathofexile.com/ladders/Akira+is+Dead+Inside+(PL1111)"
             -- local link = "http://api.pathofexile.com/ladders/Standard"
             local result, body = coro.request("GET", link)
-            print(body)
             body = json.decode(body)
             -- writel(file_now, body["total"])
             file_now:write(body["total"].."\n")
@@ -110,16 +142,18 @@ function getLadder(message)
             file_now:close()
         end 
     )()
-    message:reply("Peguei as informações da ladder, ou assim eu acho!")
+    message:reply("Peguei as informações da ladder, ou assim eu acho! owo")
 end
 
-    
-
--- Command aliases
-    pingAliases = {"ping", "pong", "acorda", "fdp"}
+function isNil(a)
+    if a == nil then
+        return true
+    else
+        return false
+    end
+end
 
 -- Command handler
-
 client:on("messageCreate", function(message)
     if message.author.bot == false then
         local content = message.content
@@ -127,18 +161,30 @@ client:on("messageCreate", function(message)
         local memberId = message.member.id
 
         local tokens = commandTokenize(content)
+
         if tokens[1]:lower() == "tukkan" then
-            if tokens[2]:lower() == "ping" then
-                message:reply("Fuck off!!")
-            elseif tokens[2]:lower() == "norris" or tokens[2]:lower() == "chuck" then
-                message:reply(getChuckNorris())
-            elseif tokens[2]:lower() == "ladder" then
-                if tokens[3]:lower() == "get" or tokens[3]:lower() == "fetch" then
-                    getLadder(message)
-                elseif tokens[3]:lower() == "show" or tokens[3]:lower() == "display" then
+            if isNil(tokens[2]) or tokens[2]:lower() == "help" or tokens[2]:lower() == "ajuda" then
+                message.channel:send("Usagem:\n- `tukkan <get|fetch>` -> Puxa a ladder pela API\n- `tukkan <show|display> [n]` -> Mostra a ladder. Caso o argumento n exista, apenas os n primeiros ranks serão mostrados\n\n\n(dica: não escreva owo/rawr/uwu)")
+            elseif tokens[2]:lower() == "ping" then
+                message:reply("rawr owo")
+            elseif tokens[2]:lower() == "get" or tokens[2]:lower() == "fetch" then
+                getLadder(message)
+            elseif tokens[2]:lower() == "show" or tokens[2]:lower() == "display" then
+                if isNil(tokens[3]) then
                     printLadder(message, getLevelsFromFile())
+                else
+                    local num = tonumber(tokens[3])
+                    if isNil(num) then
+                        message:reply("Erro: argumento DEVE ser um número!")
+                    else
+                        printLadderWithLimit(message, getLevelsFromFile(), num)
+                    end
                 end
+            else
+                message.channel:send("Usagem:\n- `tukkan <get|fetch>` -> Puxa a ladder pela API\n- `tukkan <show|display> [n]` -> Mostra a ladder. Caso o argumento n exista, apenas os n primeiros ranks serão mostrados\n\n\n(dica: não escreva owo/rawr/uwu)")
             end
+        elseif tokens[1]:lower() == "owo" or tokens[1]:lower() == "rawr" or tokens[1]:lower() == "uwu" then
+            message:reply("rawr owo")
         end
     end
 end
